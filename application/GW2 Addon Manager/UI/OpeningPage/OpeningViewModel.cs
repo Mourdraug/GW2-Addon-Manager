@@ -10,6 +10,11 @@ using System.Windows.Input;
 using GW2_Addon_Manager.App.Configuration;
 using File = System.IO.File;
 using Localization;
+using System.Linq;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using GW2_Addon_Manager.App.Configuration.Model;
 
 namespace GW2_Addon_Manager
 {
@@ -18,13 +23,11 @@ namespace GW2_Addon_Manager
     /// </summary>
     public class OpeningViewModel : INotifyPropertyChanged
     {
-        private readonly IConfigurationManager _configurationManager;
         private readonly PluginManagement _pluginManagement;
         private readonly Configuration _configuration;
 
         /***** private fields for ui bindings *****/
-        private ObservableCollection<AddonInfoFromYaml> _addonList;
-        private ObservableCollection<int> _selectedAddons;
+        private ObservableCollection<AddonRow> _addonList;
         private string _developer;
         private string _description;
         private string _addonwebsite;
@@ -38,22 +41,14 @@ namespace GW2_Addon_Manager
 
         /***** Addon List Box *****/
         /// <summary>
-        /// The indices of the checked boxes in the list of addons displayed on the UI.
-        /// </summary>
-        public ObservableCollection<int> SelectedAddons
-        {
-            get => _selectedAddons;
-            set => SetProperty(ref _selectedAddons, value);
-        }
-        /// <summary>
         /// List of Addons
         /// </summary>
-        public ObservableCollection<AddonInfoFromYaml> AddonList
+        public ObservableCollection<AddonRow> AddonList
         {
             get => _addonList;
             set => SetProperty(ref _addonList, value);
         }
-        
+
         /***** Description Panel *****/
         /// <summary>
         /// Text content for the description panel.
@@ -111,7 +106,7 @@ namespace GW2_Addon_Manager
         /***************************/
 
         /* [Configuration Options] drop-down menu */
-        
+
         /// <summary>
         /// Handles the disable selected addons button.
         /// </summary>
@@ -186,7 +181,7 @@ namespace GW2_Addon_Manager
                 if (value == _gamePath) return;
                 SetProperty(ref _gamePath, value);
 
-                new Configuration(_configurationManager).SetGamePath(_gamePath);
+                new Configuration().SetGamePath(_gamePath);
             }
         }
         private string _gamePath;
@@ -223,11 +218,11 @@ namespace GW2_Addon_Manager
         {
             onlyInstance = this;
 
-            _configurationManager = new ConfigurationManager();
-            _pluginManagement = new PluginManagement(_configurationManager);
-            _configuration = new Configuration(_configurationManager);
-
-            AddonList = new ApprovedList(_configurationManager).GenerateAddonList();
+            _pluginManagement = new PluginManagement();
+            _configuration = new Configuration();
+            ApprovedList.Instance.UpdateList();
+            AddonList = BuildObservableAddonList(ApprovedList.Instance.Addons);
+            ConfigurationManager.Instance.UserConfig.AddonsList.CollectionChanged += UpdateAddonsModel;
 
             DescriptionText = StaticText.SelectAnAddonToSeeMoreInformationAboutIt;
             DeveloperVisibility = Visibility.Hidden;
@@ -235,8 +230,38 @@ namespace GW2_Addon_Manager
             UpdateLinkVisibility = Visibility.Hidden;
             UpdateProgressVisibility = Visibility.Hidden;
 
-            GamePath = _configurationManager.UserConfig.GamePath;
+            GamePath = ConfigurationManager.Instance.UserConfig.ExePath;
         }
+
+        private void UpdateAddonsModel(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            switch (e.Action)
+            {
+                case NotifyCollectionChangedAction.Add:
+                case NotifyCollectionChangedAction.Replace:
+                    foreach (InstalledAddonData installedAddon in e.NewItems)
+                    {
+                        var row = AddonList.First(row => row.AddonInfo.addon_name == installedAddon.Name);
+                        row.IsInstalled = true;
+                        row.IsEnabled = installedAddon.Enabled;
+                    }
+                    break;
+                case NotifyCollectionChangedAction.Reset:
+                    foreach(var addon in AddonList)
+                    {
+                        addon.IsInstalled = false;
+                    }
+                    break;
+                case NotifyCollectionChangedAction.Remove:
+                    foreach (InstalledAddonData installedAddon in e.OldItems)
+                    {
+                        var row = AddonList.First(row => row.AddonInfo.addon_name == installedAddon.Name);
+                        row.IsInstalled = false;
+                    }
+                    break;
+            }
+        }
+
         /// <summary>
         /// Fetches the only instance of the OpeningViewModel and creates it if it has not been initialized yet.
         /// </summary>
@@ -284,6 +309,78 @@ namespace GW2_Addon_Manager
                 shortcut.TargetPath = Path.Combine(appPath, "GW2 Addon Manager" + ".exe");
                 shortcut.Save();
             }
+        }
+
+        private ObservableCollection<AddonRow> BuildObservableAddonList(IEnumerable<AddonInfo> addonInfo)
+        {
+            var output = new ObservableCollection<AddonRow>();
+            foreach (AddonInfo addon in addonInfo)
+            {
+                if (addon.addon_name == "d3d9 wrapper")
+                {
+                    continue;
+                }
+                var installedAddon = ConfigurationManager.Instance.UserConfig.AddonsList.FirstOrDefault(installedAddon => installedAddon.Name == addon.addon_name);
+                if (installedAddon == null)
+                {
+                    output.Add(new AddonRow() { AddonInfo = addon });
+                }
+                else
+                {
+                    output.Add(new AddonRow() { AddonInfo = addon, IsInstalled = true, IsEnabled = installedAddon.Enabled, IsSelected = installedAddon.Enabled });
+                }
+            }
+            return output;
+        }
+
+        public class AddonRow : INotifyPropertyChanged
+        {
+            bool _isSelected = false;
+            bool _isEnabled = false;
+            bool _isInstalled = false;
+
+            public AddonInfo AddonInfo { get; set; }
+            public bool IsSelected
+            {
+                get => _isSelected; set
+                {
+                    if (_isSelected != value)
+                    {
+                        _isSelected = value;
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("IsSelected"));
+                    }
+                }
+            }
+
+            public bool IsEnabled
+            {
+                get => _isEnabled; set
+                {
+                    if (_isEnabled != value)
+                    {
+                        _isEnabled = value;
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("IsEnabled"));
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("DisplayString"));
+                    }
+                }
+            }
+
+            public bool IsInstalled
+            {
+                get => _isInstalled; set
+                {
+                    if (_isInstalled != value)
+                    {
+                        _isInstalled = value;
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("IsInstalled"));
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("DisplayString"));
+                    }
+                }
+            }
+
+            public string DisplayString => $"{AddonInfo.addon_name}{(IsInstalled ? $" ({(IsEnabled ? "installed" : "disabled")})" : "")}";
+
+            public event PropertyChangedEventHandler PropertyChanged;
         }
     }
 }

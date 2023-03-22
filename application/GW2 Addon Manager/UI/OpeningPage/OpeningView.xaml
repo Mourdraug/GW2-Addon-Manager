@@ -230,7 +230,7 @@
                                       Style="{StaticResource AddonListCheckBox}"
                                       />
                                 <Label Name="add_name"
-                                       Content="{Binding addon_name}"
+                                       Content="{Binding DisplayString}"
                                        VerticalAlignment="Center"
                                        FontFamily="Microsoft YaHei UI"
                                        Foreground="DimGray"

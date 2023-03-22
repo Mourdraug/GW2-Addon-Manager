@@ -46,10 +46,10 @@ namespace GW2_Addon_Manager
                 Directory.Delete(update_folder, true);
 
             //check application version
-            dynamic latestInfo = UpdateHelpers.GitReleaseInfo(applicationRepoUrl);
-            string downloadUrl = latestInfo.assets[0].browser_download_url;
+            var latestInfo = UpdateHelpers.GitReleaseInfo(applicationRepoUrl);
+            string downloadUrl = latestInfo.Assets[0].BrowserDownloadUrl;
 
-            viewModel.UpdateAvailable = $"{StaticText.Downloading} {latestInfo.tag_name}";
+            viewModel.UpdateAvailable = $"{StaticText.Downloading} {latestInfo.TagName}";
 
             Directory.CreateDirectory(update_folder);
             using (var client = UpdateHelpers.GetClient())

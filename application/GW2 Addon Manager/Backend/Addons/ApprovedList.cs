@@ -1,104 +1,135 @@
-﻿using System;
+﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Net;
+using System.Text.Json;
 using GW2_Addon_Manager.App.Configuration;
-using Newtonsoft.Json;
 
 namespace GW2_Addon_Manager
 {
-    class ApprovedList
+    public class ApprovedList
     {
-        private const string AddonFolder = "resources\\addons";
+        private static ApprovedList _instance;
+        public static ApprovedList Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    _instance = new ApprovedList();
+                }
+                return _instance;
+            }
+        }
+        private const string CacheLocation = "addon_cache.json";
+        private const string TempFolder = "temp";
+
         //Approved-addons repository
         private const string RepoUrl = "https://api.github.com/repositories/206052865";
 
-        private readonly IConfigurationManager _configManager;
+        private AddonCache addonCache = new();
 
-        public ApprovedList(IConfigurationManager configManager)
+        public List<AddonInfo> Addons { get => addonCache.AddonInfo; }
+
+        private ApprovedList() { }
+
+        public void UpdateList()
         {
-            _configManager = configManager;
+            try
+            {
+                using (var client = UpdateHelpers.GetClient())
+                {
+                    string raw = client.DownloadStringFromGithubAPI(RepoUrl + "/branches");
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    };
+                    var result = JsonSerializer.Deserialize<BranchInfo[]>(raw, options);
+                    var remoteCommit = result.Single(r => r.Name == "master").Commit.Sha;
+                    if (LoadCache() && addonCache.Commit == remoteCommit)
+                    {
+                        return;
+                    }
+                    var updatedAddonCache = new AddonCache() { Commit = remoteCommit };
+                    if (Directory.Exists(TempFolder))
+                    {
+                        Directory.Delete(TempFolder, true);
+                    }
+                    Directory.CreateDirectory(TempFolder);
+
+                    var zipLocation = Path.Combine(TempFolder, "approvedList.zip");
+                    client.DownloadFileFromGithubAPI(RepoUrl + "/zipball", zipLocation);
+                    ZipFile.ExtractToDirectory(zipLocation, TempFolder);
+                    var extractedFolder = Directory.EnumerateDirectories(TempFolder).First();
+                    foreach (var addonDir in Directory.EnumerateDirectories(extractedFolder))
+                    {
+                        var addonInfo = AddonYamlReader.getAddonInInfo(addonDir);
+                        if (addonInfo.folder_name == null)
+                        {
+                            addonInfo.folder_name = new DirectoryInfo(addonDir).Name;
+                        }
+                        updatedAddonCache.AddonInfo.Add(addonInfo);
+                    }
+                    addonCache = updatedAddonCache;
+                    SaveCache();
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(TempFolder))
+                {
+                    Directory.Delete(TempFolder, true);
+                }
+            }
         }
 
-        /// <summary>
-        /// Check current version of addon list against remote repo for changes and fetch them
-        /// </summary>
-        public void FetchListFromRepo()
+        private bool LoadCache()
         {
-            const string tempFileName = "addonlist";
-            string raw = null;
-            using(var client = UpdateHelpers.GetClient())
+            if (!File.Exists(CacheLocation))
             {
-                raw = client.DownloadStringFromGithubAPI(RepoUrl + "/branches");
+                return false;
             }
-            var result = JsonConvert.DeserializeObject<BranchInfo[]>(raw);
-            var master = result.Single(r => r.Name == "master").Commit.Sha;
-
-            if (master == _configManager.UserConfig.AddonsList.Hash || master is null) return;
-
-            if (Directory.Exists(AddonFolder))
-                Directory.Delete(AddonFolder, true);
-            if (File.Exists(tempFileName))
-                File.Delete(tempFileName);
-
-            //fetching new version
-            using (var client = UpdateHelpers.GetClient())
+            var serializedCache = File.ReadAllText(CacheLocation);
+            try
             {
-                client.DownloadFileFromGithubAPI(RepoUrl + "/zipball", tempFileName);
+                addonCache = JsonSerializer.Deserialize<AddonCache>(serializedCache);
+                return true;
             }
-
-            ZipFile.ExtractToDirectory(tempFileName, AddonFolder);
-            var downloaded = Directory.EnumerateDirectories(AddonFolder).First();
-            foreach (var entry in Directory.EnumerateFileSystemEntries(downloaded))
+            catch
             {
-                Directory.Move(entry, AddonFolder + "\\" + Path.GetFileName(entry));
+                return false;
             }
-
-            //updating version in config file
-            _configManager.UserConfig.AddonsList.Hash = master;
-            _configManager.SaveConfiguration();
-
-            //cleanup
-            Directory.Delete(downloaded, true);
-            File.Delete(tempFileName);
         }
 
-        /// <summary>
-        /// Scans resources/addons directory to populate a collection used for displaying the list of available addons on the UI.
-        /// </summary>
-        /// <returns>A list of AddonInfo objects representing all approved add-ons.</returns>
-        public ObservableCollection<AddonInfoFromYaml> GenerateAddonList()
+        private void SaveCache()
         {
-            FetchListFromRepo();
-
-            var addons = new ObservableCollection<AddonInfoFromYaml>(); //List of AddonInfo objects
-            var addonDirectories = Directory.GetDirectories(AddonFolder);  //Names of addon subdirectories in /resources/addons
-            foreach (var addonFolderName in addonDirectories)
-            {
-                if (addonFolderName == "resources\\addons\\d3d9_wrapper") continue;
-
-                var addonInfo = AddonYamlReader.getAddonInInfo(addonFolderName.Replace(AddonFolder + "\\", ""));
-                addonInfo.folder_name = addonFolderName.Replace(AddonFolder + "\\", "");
-                addonInfo.IsSelected = _configManager.UserConfig.AddonsList[addonInfo.folder_name]?.Installed ?? false;
-                addons.Add(addonInfo);       //retrieving info from each addon subdirectory's update.yaml file and adding it to the list
-            }
-
-            return addons;
+            var serializedCache = JsonSerializer.Serialize(addonCache);
+            File.WriteAllText(CacheLocation, serializedCache);
         }
 
-        private struct BranchInfo
+        public AddonInfo GetAddonInfo(string addonName)
         {
-            public string Name;
-            public HeadInfo Commit;
-            public bool Protected;
+            return Addons.Find(addon => addon.addon_name == addonName);
         }
 
-        private struct HeadInfo
+        private class BranchInfo
         {
-            public string Sha;
-            public string Url;
+            public string Name { get; set; }
+            public HeadInfo Commit { get; set; }
+            public bool Protected { get; set; }
+        }
+
+        private class HeadInfo
+        {
+            public string Sha { get; set; }
+            public string Url { get; set; }
+        }
+
+        private class AddonCache
+        {
+            public string Commit { get; set; }
+            public List<AddonInfo> AddonInfo { get; set; } = new();
         }
     }
 }

@@ -14,21 +14,18 @@ namespace GW2_Addon_Manager
     /// </summary>
     public partial class UpdatingView : Page
     {
-        private readonly IConfigurationManager _configurationManager;
-
         /// <summary>
         /// Sets the page's DataContext, initializes it, and begins the update process.
         /// </summary>
         public UpdatingView()
         {
-            _configurationManager = new ConfigurationManager();
             DataContext = UpdatingViewModel.GetInstance;
             InitializeComponent();
 
-            LoaderSetup settingUp = new LoaderSetup(new ConfigurationManager());
+            LoaderSetup settingUp = new LoaderSetup();
             Task.Run(() => UpdateHelpers.UpdateAll());
 
-            launchOnClose.IsChecked = _configurationManager.UserConfig.LaunchGame;
+            launchOnClose.IsChecked = ConfigurationManager.Instance.UserConfig.LaunchGame;
         }
 
         /***************************** Titlebar Window Drag *****************************/
@@ -46,24 +43,23 @@ namespace GW2_Addon_Manager
 
             if ((bool)launchOnClose.IsChecked)
             {
-                string exeLocation = Path.Combine(_configurationManager.UserConfig.GamePath, _configurationManager.UserConfig.ExeName);
+                string exeLocation = ConfigurationManager.Instance.UserConfig.ExePath;
                 try
                 {
                     Process.Start(exeLocation, "-autologin");
                 }
                 catch (System.ComponentModel.Win32Exception)
                 {
-                    MessageBox.Show($"Unable to launch game as {_configurationManager.UserConfig.ExeName} is missing.",
+                    MessageBox.Show($"Unable to launch game as {ConfigurationManager.Instance.UserConfig.ExePath} is missing.",
                                      "Unable to Launch Game",
                                      MessageBoxButton.OK,
                                      MessageBoxImage.Error);
                 }
             }
 
-            if (_configurationManager.UserConfig.LaunchGame != launchOnClose.IsChecked)
+            if (ConfigurationManager.Instance.UserConfig.LaunchGame != launchOnClose.IsChecked)
             {
-                _configurationManager.UserConfig.LaunchGame = (bool)launchOnClose.IsChecked;
-                _configurationManager.SaveConfiguration();
+                ConfigurationManager.Instance.UserConfig.LaunchGame = (bool)launchOnClose.IsChecked;
             }
 
             Application.Current.Shutdown();

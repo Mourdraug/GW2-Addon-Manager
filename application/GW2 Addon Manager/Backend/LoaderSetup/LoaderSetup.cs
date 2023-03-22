@@ -10,8 +10,6 @@ namespace GW2_Addon_Manager
     class LoaderSetup
     {
         const string loader_git_url = "https://api.github.com/repos/gw2-addon-loader/loader-core/releases/latest";
-
-        private readonly IConfigurationManager _configurationManager;
         string loader_game_path;
 
         UpdatingViewModel viewModel;
@@ -25,12 +23,11 @@ namespace GW2_Addon_Manager
         /// <summary>
         /// Constructor; also sets some UI text to indicate that the addon loader is having an update check
         /// </summary>
-        public LoaderSetup(IConfigurationManager configurationManager)
+        public LoaderSetup()
         {
-            _configurationManager = configurationManager;
             viewModel = UpdatingViewModel.GetInstance;
             viewModel.ProgBarLabel = "Checking for updates to Addon Loader";
-            loader_game_path = configurationManager.UserConfig.GamePath;
+            loader_game_path = ConfigurationManager.Instance.UserConfig.GamePath;
         }
 
         /// <summary>
@@ -39,23 +36,23 @@ namespace GW2_Addon_Manager
         /// <returns></returns>
         public async Task HandleLoaderUpdate()
         {
-            dynamic releaseInfo = UpdateHelpers.GitReleaseInfo(loader_git_url);
+            var releaseInfo = UpdateHelpers.GitReleaseInfo(loader_git_url);
 
             loader_d3d11_destination = Path.Combine(loader_game_path, "d3d11.dll");
             loader_dxgi_destination = Path.Combine(loader_game_path, "dxgi.dll");
             loader_self_destination = Path.Combine(loader_game_path, "addonLoader.dll");
             loader_d3d9_destination = Path.Combine(loader_game_path, "bin64/d3d9.dll");
 
-            latestLoaderVersion = releaseInfo.tag_name;
+            latestLoaderVersion = releaseInfo.TagName;
 
             if (File.Exists(loader_d3d11_destination) && 
                File.Exists(loader_dxgi_destination) && 
                File.Exists(loader_self_destination) &&
                File.Exists(loader_d3d9_destination) &&
-               _configurationManager.UserConfig.LoaderVersion == latestLoaderVersion)
+               ConfigurationManager.Instance.UserConfig.LoaderVersion == latestLoaderVersion)
                 return;
 
-            string downloadLink = releaseInfo.assets[0].browser_download_url;
+            string downloadLink = releaseInfo.Assets[0].BrowserDownloadUrl;
             await Download(downloadLink);
         }
         private async Task Download(string url)
@@ -94,8 +91,7 @@ namespace GW2_Addon_Manager
 
             ZipFile.ExtractToDirectory(fileName, loader_game_path);
 
-            _configurationManager.UserConfig.LoaderVersion = latestLoaderVersion;
-            _configurationManager.SaveConfiguration();
+            ConfigurationManager.Instance.UserConfig.LoaderVersion = latestLoaderVersion;
         }
 
 

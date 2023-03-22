@@ -24,7 +24,6 @@ namespace GW2_Addon_Manager
         static string releases_url = "https://github.com/fmmmlee/GW2-Addon-Manager/releases";
         static string UpdateNotificationFile = "updatenotification.txt";
 
-        private readonly IConfigurationManager _configurationManager;
         private readonly PluginManagement _pluginManagement;
 
         /// <summary>
@@ -34,12 +33,9 @@ namespace GW2_Addon_Manager
         {
             DataContext = OpeningViewModel.GetInstance;
 
-            _configurationManager = new ConfigurationManager();
-            var configuration = new Configuration(_configurationManager);
+            var configuration = new Configuration();
             configuration.CheckSelfUpdates();
-            configuration.DetermineSystemType();
-            _pluginManagement = new PluginManagement(_configurationManager);
-            _pluginManagement.DisplayAddonStatus();
+            _pluginManagement = new PluginManagement();
 
             InitializeComponent();
             //update notification
@@ -59,10 +55,10 @@ namespace GW2_Addon_Manager
         /// <param name="e"></param>
         public void addOnList_SelectedIndexChanged(object sender, SelectionChangedEventArgs e)
         {
-            AddonInfoFromYaml selected = OpeningViewModel.GetInstance.AddonList[addons.SelectedIndex];
-            OpeningViewModel.GetInstance.DescriptionText = selected.description;
-            OpeningViewModel.GetInstance.DeveloperText = selected.developer;
-            OpeningViewModel.GetInstance.AddonWebsiteLink = selected.website;
+            OpeningViewModel.AddonRow selected = OpeningViewModel.GetInstance.AddonList[addons.SelectedIndex];
+            OpeningViewModel.GetInstance.DescriptionText = selected.AddonInfo.description;
+            OpeningViewModel.GetInstance.DeveloperText = selected.AddonInfo.developer;
+            OpeningViewModel.GetInstance.AddonWebsiteLink = selected.AddonInfo.website;
 
             OpeningViewModel.GetInstance.DeveloperVisibility = Visibility.Visible;
         }
@@ -103,23 +99,22 @@ namespace GW2_Addon_Manager
         private void update_button_clicked(object sender, RoutedEventArgs e)
         {
             //If bin folder doesn't exist then LoaderSetup intialization will fail.
-            if (_configurationManager.UserConfig.BinFolder == null)
+            if (ConfigurationManager.Instance.UserConfig.BinFolder == null)
             {
                 MessageBox.Show("Unable to locate Guild Wars 2 /bin/ or /bin64/ folder." + Environment.NewLine + "Please verify Game Path is correct.",
                                 "Unable to Update", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            List<AddonInfoFromYaml> selectedAddons = new List<AddonInfoFromYaml>();
+            List<AddonInfo> selectedAddons = new List<AddonInfo>();
 
             //the d3d9 wrapper is installed by default and hidden from the list displayed to the user, so it has to be added to this list manually
-            AddonInfoFromYaml wrapper = AddonYamlReader.getAddonInInfo("d3d9_wrapper");
-            wrapper.folder_name = "d3d9_wrapper";
+            AddonInfo wrapper = ApprovedList.Instance.GetAddonInfo("d3d9 wrapper");
             selectedAddons.Add(wrapper);
 
-            foreach (AddonInfoFromYaml addon in OpeningViewModel.GetInstance.AddonList.Where(add => add.IsSelected == true))
+            foreach (OpeningViewModel.AddonRow addon in OpeningViewModel.GetInstance.AddonList.Where(add => add.IsSelected == true))
             {
-                selectedAddons.Add(addon);
+                selectedAddons.Add(addon.AddonInfo);
             }
 
             Application.Current.Properties["Selected"] = selectedAddons;
@@ -137,7 +132,9 @@ namespace GW2_Addon_Manager
         private void SelectDirectoryBtn_OnClick(object sender, RoutedEventArgs e)
         {
             var pathSelectionDialog = new CommonOpenFileDialog();
-            pathSelectionDialog.IsFolderPicker = true;
+            pathSelectionDialog.IsFolderPicker = false;
+            pathSelectionDialog.Filters.Add(new CommonFileDialogFilter("Guild Wars 2 executable", "*.exe"));
+            pathSelectionDialog.Filters.Add(new CommonFileDialogFilter("All files", "*.*"));
             CommonFileDialogResult result = pathSelectionDialog.ShowDialog();
             if (result == (CommonFileDialogResult)1)
                 OpeningViewModel.GetInstance.GamePath = pathSelectionDialog.FileName;

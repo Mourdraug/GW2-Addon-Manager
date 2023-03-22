@@ -26,8 +26,7 @@ namespace GW2_Addon_Manager.App
 
         private void SetCulture()
         {
-            ConfigurationManager configurationManager = new ConfigurationManager();
-            CultureInfo culture = new CultureInfo(configurationManager.UserConfig.Culture);
+            CultureInfo culture = new CultureInfo(ConfigurationManager.Instance.UserConfig.Culture);
             Thread.CurrentThread.CurrentCulture = culture;
             Thread.CurrentThread.CurrentUICulture = culture;
         }

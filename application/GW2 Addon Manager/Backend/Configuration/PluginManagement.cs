@@ -7,26 +7,18 @@ namespace GW2_Addon_Manager
 {
     class PluginManagement
     {
-        private readonly IConfigurationManager _configurationManager;
-
-        public PluginManagement(IConfigurationManager configurationManager)
-        {
-            _configurationManager = configurationManager;
-        }
-
         /// <summary>
         /// Sets version fields of all installed and enabled addons to a dummy value so they are redownloaded, then starts update process.
         /// Intended for use if a user borks their install (probably by manually deleting something in the /addons/ folder).
         /// </summary>
         public bool ForceRedownload()
         {
-            string redownloadmsg = "This will forcibly redownload all installed addons regardless of their version. Do you wish to continue?";
+            /*string redownloadmsg = "This will forcibly redownload all installed addons regardless of their version. Do you wish to continue?";
             if (MessageBox.Show(redownloadmsg, "Warning!", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
             {
-                _configurationManager.UserConfig.AddonsList.Where(a => a.Installed).ToList().ForEach(a => a.Version = "dummy value");
-                _configurationManager.SaveConfiguration();
+                _configurationManager.UserConfig.AddonsList.ToList().ForEach(a => a.Version = "dummy value");
                 return true;
-            }
+            }*/
             return false; 
         }
 
@@ -44,12 +36,10 @@ namespace GW2_Addon_Manager
             if (MessageBox.Show(deletemsg, "Warning!", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
                 if (MessageBox.Show(secondPrecautionaryMsg, "Absolutely Sure?", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
                 {
-                    new Configuration(_configurationManager).DeleteAllAddons();
+                    new Configuration().DeleteAllAddons();
                     //post-delete info message
                     MessageBox.Show("All addons have been removed.", "Reverted to Clean Install", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
-                    
-            DisplayAddonStatus();
         }
 
         /// <summary>
@@ -61,10 +51,9 @@ namespace GW2_Addon_Manager
             string deletemsg = "This will delete any add-ons that are selected and all data associated with them! Are you sure you wish to continue?";
             if (MessageBox.Show(deletemsg, "Warning!", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
             {
-                foreach (AddonInfoFromYaml addon in OpeningViewModel.GetInstance.AddonList.Where(add => add.IsSelected == true))
-                    new GenericUpdater(addon, _configurationManager).Delete();
+                foreach (AddonInfo addon in GetSelectedAddons())
+                    new GenericUpdater(addon).Delete();
             }
-            DisplayAddonStatus();
         }
 
         /// <summary>
@@ -76,10 +65,9 @@ namespace GW2_Addon_Manager
             string disablemsg = "This will disable the selected add-ons until you choose to re-enable them. Do you wish to continue?";
             if (MessageBox.Show(disablemsg, "Disable", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
             {
-                foreach (AddonInfoFromYaml addon in OpeningViewModel.GetInstance.AddonList.Where(add => add.IsSelected == true))
-                    new GenericUpdater(addon, _configurationManager).Disable();
+                foreach (AddonInfo addon in GetSelectedAddons())
+                    new GenericUpdater(addon).Disable();
             }
-            DisplayAddonStatus();
         }
 
         /// <summary>
@@ -91,35 +79,14 @@ namespace GW2_Addon_Manager
             string enablemsg = "This will enable any of the selected add-ons that are disabled. Do you wish to continue?";
             if (MessageBox.Show(enablemsg, "Enable", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
             {
-                foreach (AddonInfoFromYaml addon in OpeningViewModel.GetInstance.AddonList.Where(add => add.IsSelected == true))
-                    new GenericUpdater(addon, _configurationManager).Enable();
+                foreach (AddonInfo addon in GetSelectedAddons())
+                    new GenericUpdater(addon).Enable();
             }
-            DisplayAddonStatus();
         }
 
-        /// <summary>
-        /// Displays the latest status of the plugins on the opening screen (disabled, enabled, version, installed).
-        /// </summary>
-        public void DisplayAddonStatus()
+        public IEnumerable<AddonInfo> GetSelectedAddons()
         {
-            foreach (var addon in OpeningViewModel.GetInstance.AddonList)
-            {
-                var addonConfig =
-                    _configurationManager.UserConfig.AddonsList[addon.folder_name];
-                if (addonConfig == null) continue;
-
-                addon.addon_name = AddonYamlReader.getAddonInInfo(addon.folder_name).addon_name;
-                if (addonConfig.Installed)
-                {
-                    if (addon.folder_name == "arcdps" || addon.folder_name == "buildPad" || addonConfig.Version.Length > 10)
-                        addon.addon_name += " (installed)";
-                    else
-                        addon.addon_name += " (" + addonConfig.Version + " installed)";
-                }
-
-                if (addonConfig.Disabled)
-                    addon.addon_name += " (disabled)";
-            }
+            return OpeningViewModel.GetInstance.AddonList.Where(addon => addon.IsSelected).Select(row => row.AddonInfo).ToList();
         }
     }
 }
