@@ -241,13 +241,17 @@ namespace GW2_Addon_Manager
                 case NotifyCollectionChangedAction.Replace:
                     foreach (InstalledAddonData installedAddon in e.NewItems)
                     {
+                        if (installedAddon.Name == "d3d9 wrapper")
+                        {
+                            continue;
+                        }
                         var row = AddonList.First(row => row.AddonInfo.addon_name == installedAddon.Name);
                         row.IsInstalled = true;
                         row.IsEnabled = installedAddon.Enabled;
                     }
                     break;
                 case NotifyCollectionChangedAction.Reset:
-                    foreach(var addon in AddonList)
+                    foreach (var addon in AddonList)
                     {
                         addon.IsInstalled = false;
                     }
